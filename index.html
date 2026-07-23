@@ -431,9 +431,11 @@ nav {
 }
 .submit-btn:hover { background: var(--accent2); }
 .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.skip-btn {
-  padding: 14px 24px;
-  background: transparent;
+.skip-btn:hover { color: var(--text); border-color: var(--text2); }
+
+.prev-q-btn {
+  padding: 14px 20px;
+  background: var(--bg3);
   border: 1px solid var(--border2);
   border-radius: var(--radius-sm);
   color: var(--text2);
@@ -442,7 +444,8 @@ nav {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.skip-btn:hover { color: var(--text); border-color: var(--text2); }
+.prev-q-btn:hover { color: var(--text); border-color: var(--accent2); background: var(--bg4); }
+.prev-q-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* FEEDBACK DISPLAY */
 .feedback-card {
@@ -687,8 +690,9 @@ nav {
 
     <div class="user-id-row">
       <div class="user-id-group">
-        <span class="config-label">Your Name / ID (to save history)</span>
-        <input type="text" id="user-id-input" placeholder="e.g. mokshith234 — optional"/>
+        <span class="config-label">Your Email Address <span style="color:var(--red)">*</span> (Required to start & save progress)</span>
+        <input type="email" id="user-email-input" placeholder="e.g. user@example.com" autocomplete="email" style="width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;outline:none;transition:all 0.2s ease;"/>
+        <div id="email-error-msg" style="display:none;color:var(--red);font-size:12px;margin-top:6px;font-family:'DM Mono',monospace;"></div>
       </div>
     </div>
 
@@ -720,6 +724,7 @@ nav {
           <textarea id="answer-input" placeholder="Type your answer here… be as detailed as you can. Examples are encouraged." rows="6"></textarea>
           <div class="answer-hint">Tip: Press Ctrl + Enter to submit</div>
           <div class="answer-actions">
+            <button class="prev-q-btn" id="prev-q-btn" onclick="prevQuestion()" style="display:none">← Prev</button>
             <button class="submit-btn" id="submit-btn" onclick="submitAnswer()"><span>Submit Answer</span></button>
             <button class="skip-btn" onclick="skipQuestion()">Skip →</button>
           </div>
@@ -836,22 +841,48 @@ let state = {
 window.addEventListener('popstate', handlePopState);
 
 function pushHistoryState(screen, extraData = {}) {
-  history.pushState({ screen, ...extraData }, '', `?screen=${screen}`);
+  const params = new URLSearchParams(window.location.search);
+  params.set('screen', screen);
+  if (extraData.q !== undefined) {
+    params.set('q', extraData.q + 1);
+  } else {
+    params.delete('q');
+  }
+  const newUrl = window.location.pathname + '?' + params.toString();
+  history.pushState({ screen, ...extraData }, '', newUrl);
 }
 
 function replaceHistoryState(screen, extraData = {}) {
-  history.replaceState({ screen, ...extraData }, '', `?screen=${screen}`);
+  const params = new URLSearchParams(window.location.search);
+  params.set('screen', screen);
+  if (extraData.q !== undefined) {
+    params.set('q', extraData.q + 1);
+  } else {
+    params.delete('q');
+  }
+  const newUrl = window.location.pathname + '?' + params.toString();
+  history.replaceState({ screen, ...extraData }, '', newUrl);
 }
 
 function handlePopState(e) {
   const urlParams = new URLSearchParams(window.location.search);
   const targetScreen = e.state?.screen || urlParams.get('screen') || 'setup';
+  const targetQ = e.state?.q !== undefined ? e.state.q : (parseInt(urlParams.get('q')) - 1 || 0);
   const currentActiveScreen = document.querySelector('.screen.active')?.id?.replace('screen-', '');
 
   if (currentActiveScreen === 'interview' && targetScreen === 'setup') {
     const confirmExit = confirm('Are you sure you want to leave the interview? Progress will be lost.');
     if (!confirmExit) {
-      pushHistoryState('interview');
+      pushHistoryState('interview', { q: state.currentQ });
+      return;
+    }
+  }
+
+  if (targetScreen === 'interview' && state.questions.length > 0) {
+    if (targetQ >= 0 && targetQ < state.questions.length) {
+      state.currentQ = targetQ;
+      renderQuestionAtCurrentIndex();
+      showScreen('interview', false);
       return;
     }
   }
@@ -859,7 +890,7 @@ function handlePopState(e) {
   showScreen(targetScreen, false);
 }
 
-function showScreen(name, updateHistory = true) {
+function showScreen(name, updateHistory = true, extraData = {}) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const targetEl = document.getElementById('screen-' + name);
   if (targetEl) {
@@ -867,7 +898,7 @@ function showScreen(name, updateHistory = true) {
     window.scrollTo(0, 0);
   }
   if (updateHistory) {
-    pushHistoryState(name);
+    pushHistoryState(name, extraData);
   }
 }
 
@@ -997,13 +1028,40 @@ async function apiGet(endpoint) {
   return r.json();
 }
 
+// HELPER FOR EMAIL VALIDATION
+function isValidEmail(email) {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(String(email).toLowerCase());
+}
+
 // INTERVIEW WORKFLOW
 async function startInterview() {
   if (state.selectedTopics.length === 0) {
     showToast('Select at least one topic');
     return;
   }
-  state.userId = document.getElementById('user-id-input').value.trim() || 'anonymous';
+
+  const emailInput = document.getElementById('user-email-input');
+  const errorMsgEl = document.getElementById('email-error-msg');
+  const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
+
+  if (!email || !isValidEmail(email)) {
+    if (emailInput) {
+      emailInput.style.borderColor = 'var(--red)';
+      emailInput.focus();
+    }
+    if (errorMsgEl) {
+      errorMsgEl.textContent = '⚠ Please enter a valid email address to start.';
+      errorMsgEl.style.display = 'block';
+    }
+    showToast('⚠ Email address is required to start the mock test.');
+    return;
+  } else {
+    if (emailInput) emailInput.style.borderColor = 'var(--border)';
+    if (errorMsgEl) errorMsgEl.style.display = 'none';
+  }
+
+  state.userId = email;
   state.sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   state.sessionStart = Date.now();
   state.questions = [];
@@ -1013,9 +1071,9 @@ async function startInterview() {
 
   document.getElementById('q-total').textContent = state.questionCount;
   initHistoryList();
-  showScreen('interview');
+  showScreen('interview', true, { q: 0 });
 
-  if (state.userId !== 'anonymous') loadPreviousSessions();
+  loadPreviousSessions();
   await loadNextQuestion();
 }
 
@@ -1054,10 +1112,22 @@ async function loadNextQuestion() {
   const qNum = state.currentQ + 1;
   document.getElementById('q-current').textContent = qNum;
   document.getElementById('progress-fill').style.width = `${((qNum - 1) / state.questionCount) * 100}%`;
-  document.getElementById('answer-input').value = '';
+  document.getElementById('answer-input').value = state.answers[state.currentQ] || '';
   document.getElementById('submit-btn').disabled = false;
   document.getElementById('answer-section').style.display = 'block';
   document.getElementById('feedback-card').style.display = 'none';
+
+  const prevBtn = document.getElementById('prev-q-btn');
+  if (prevBtn) prevBtn.style.display = state.currentQ > 0 ? 'block' : 'none';
+
+  pushHistoryState('interview', { q: state.currentQ });
+
+  // If question was already fetched earlier during navigation
+  if (state.questions[state.currentQ]) {
+    renderQuestionAtCurrentIndex();
+    return;
+  }
+
   document.getElementById('question-text').innerHTML = `<span style="color:var(--text3)">Generating question </span><span class="thinking-dots"><span></span><span></span><span></span></span>`;
   document.getElementById('q-topic-badge').textContent = '—';
   document.getElementById('q-diff-badge').className = 'q-diff-badge';
@@ -1071,18 +1141,71 @@ async function loadNextQuestion() {
       total_questions: state.questionCount,
       asked_questions: state.questions.map(q => q.question)
     });
-    state.questions.push(qData);
+    state.questions[state.currentQ] = qData;
+    renderQuestionAtCurrentIndex();
+  } catch (e) {
+    document.getElementById('question-text').textContent = 'Error: ' + e.message;
+    showToast('⚠ ' + e.message);
+  }
+}
+
+function prevQuestion() {
+  if (state.currentQ > 0) {
+    state.currentQ--;
+    pushHistoryState('interview', { q: state.currentQ });
+    renderQuestionAtCurrentIndex();
+  }
+}
+
+function renderQuestionAtCurrentIndex() {
+  const qNum = state.currentQ + 1;
+  document.getElementById('q-current').textContent = qNum;
+  document.getElementById('progress-fill').style.width = `${((qNum - 1) / state.questionCount) * 100}%`;
+  
+  const prevBtn = document.getElementById('prev-q-btn');
+  if (prevBtn) prevBtn.style.display = state.currentQ > 0 ? 'block' : 'none';
+
+  const qData = state.questions[state.currentQ];
+  if (qData) {
     document.getElementById('question-text').textContent = qData.question;
     document.getElementById('q-topic-badge').textContent = qData.topic;
     const diffEl = document.getElementById('q-diff-badge');
     diffEl.textContent = qData.difficulty;
     diffEl.className = `q-diff-badge diff-${qData.difficulty}`;
-    document.getElementById('answer-input').focus();
-    updateHistoryItem(state.currentQ, 'active');
-  } catch (e) {
-    document.getElementById('question-text').textContent = 'Error: ' + e.message;
-    showToast('⚠ ' + e.message);
   }
+
+  document.getElementById('answer-input').value = state.answers[state.currentQ] || '';
+  const savedResult = state.results[state.currentQ];
+
+  if (savedResult) {
+    document.getElementById('answer-section').style.display = 'block';
+    document.getElementById('submit-btn').disabled = false;
+    document.getElementById('feedback-card').style.display = 'block';
+    document.getElementById('next-btn').style.display = 'block';
+
+    const sc = document.getElementById('score-circle');
+    const sl = document.getElementById('score-label');
+    const ss = document.getElementById('score-sublabel');
+
+    if (savedResult.score === 'correct') {
+      sc.textContent = '✓'; sc.className = 'score-circle score-correct'; sl.textContent = 'Correct'; ss.textContent = `${savedResult.points} points`;
+    } else if (savedResult.score === 'partial') {
+      sc.textContent = '◐'; sc.className = 'score-circle score-partial'; sl.textContent = 'Partially Correct'; ss.textContent = `${savedResult.points} points`;
+    } else {
+      sc.textContent = '✗'; sc.className = 'score-circle score-wrong'; sl.textContent = 'Needs Improvement'; ss.textContent = `${savedResult.points} points`;
+    }
+
+    document.getElementById('feedback-text').textContent = savedResult.feedback || '';
+    document.getElementById('ideal-text').textContent = savedResult.ideal_answer || '';
+    document.getElementById('tip-text').textContent = savedResult.tip || '';
+  } else {
+    document.getElementById('answer-section').style.display = 'block';
+    document.getElementById('submit-btn').disabled = false;
+    document.getElementById('feedback-card').style.display = 'none';
+    document.getElementById('answer-input').focus();
+  }
+
+  updateHistoryItem(state.currentQ, savedResult ? savedResult.score : 'active');
 }
 
 async function submitAnswer() {
@@ -1266,10 +1389,10 @@ async function showResults() {
     document.getElementById('weak-areas-section').style.display = 'none';
   }
 
-  // Save session
+  // Save session to Supabase
   const duration = Math.round((Date.now() - state.sessionStart) / 1000);
   try {
-    await apiPost('/api/session/save', {
+    const saveRes = await apiPost('/api/session/save', {
       session_id: state.sessionId,
       user_id: state.userId,
       topics: state.selectedTopics.map(id => TOPICS.find(t => t.id === id)?.name).filter(Boolean),
@@ -1279,8 +1402,18 @@ async function showResults() {
       score_pct: pct,
       duration_seconds: duration
     });
-    showToast('✓ Session saved to your history');
-  } catch (e) { /* silent fail if saving offline */ }
+
+    if (saveRes.status === 'saved') {
+      showToast('✓ Session saved to Supabase');
+    } else if (saveRes.status === 'skipped') {
+      showToast('ℹ Session complete (Supabase credentials not configured on backend)');
+    } else {
+      showToast('⚠ Save status: ' + (saveRes.message || 'Unknown response'));
+    }
+  } catch (e) {
+    console.error('Failed to save session to Supabase:', e);
+    showToast('⚠ Could not save to Supabase: ' + e.message);
+  }
 
   showScreen('results');
 }
