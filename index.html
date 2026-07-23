@@ -645,8 +645,9 @@ nav {
 <div id="app">
   <!-- NAV -->
   <nav>
-    <div class="logo">Prep<span>AI</span></div>
+    <div class="logo" onclick="goToDashboard()" style="cursor:pointer;" title="Back to Dashboard">Prep<span>AI</span></div>
     <div class="nav-right">
+      <button class="quit-btn" onclick="goToDashboard()" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;">🏠 Dashboard</button>
       <div class="server-status" id="server-status">● connecting…</div>
       <div class="api-badge connected" id="api-status">✓ PrepAI Live</div>
     </div>
@@ -711,7 +712,10 @@ nav {
     <div class="interview-header">
       <span class="q-counter">Question <strong id="q-current">1</strong> of <strong id="q-total">10</strong></span>
       <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-      <button class="quit-btn" onclick="quitSession()">✕ End</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="quit-btn" onclick="goToDashboard()" style="display:inline-flex;align-items:center;gap:4px;">🏠 Dashboard</button>
+        <button class="quit-btn" onclick="quitSession()">✕ End</button>
+      </div>
     </div>
 
     <div class="interview-layout">
@@ -803,8 +807,9 @@ nav {
         <div id="weak-tags"></div>
       </div>
 
-      <div class="results-actions">
-        <button class="restart-btn" onclick="restartSession()">Start New Session →</button>
+      <div class="results-actions" style="display:flex;gap:12px;">
+        <button class="restart-btn" onclick="restartSession()" style="flex:1;">Start New Session →</button>
+        <button class="quit-btn" onclick="goToDashboard()" style="padding:18px 24px;font-size:15px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🏠 Dashboard</button>
       </div>
     </div>
   </div>
@@ -1451,6 +1456,16 @@ async function showResults() {
 }
 
 function restartSession() {
+  showScreen('setup');
+}
+
+function goToDashboard() {
+  const currentScreen = document.querySelector('.screen.active')?.id?.replace('screen-', '');
+  if (currentScreen === 'interview') {
+    if (!confirm('Return to Dashboard? Your active interview progress will be lost.')) {
+      return;
+    }
+  }
   showScreen('setup');
 }
 
