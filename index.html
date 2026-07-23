@@ -42,7 +42,6 @@ body {
   position: relative;
 }
 
-/* Subtle Glowing Background Glows */
 body::before {
   content: '';
   position: fixed;
@@ -606,7 +605,6 @@ nav {
 }
 .restart-btn:hover { background: var(--accent2); transform: translateY(-1px); }
 
-/* ANIMATION UTILS */
 .thinking-dots span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); margin: 0 3px; animation: bounce 0.9s infinite; }
 .thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
 .thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
@@ -834,41 +832,64 @@ let state = {
   currentQ: 0,
 };
 
-// INITIALIZATION
+// ── BROWSER HISTORY & BACK BUTTON NAVIGATION ──
+window.addEventListener('popstate', handlePopState);
+
+function pushHistoryState(screen, extraData = {}) {
+  history.pushState({ screen, ...extraData }, '', `?screen=${screen}`);
+}
+
+function replaceHistoryState(screen, extraData = {}) {
+  history.replaceState({ screen, ...extraData }, '', `?screen=${screen}`);
+}
+
+function handlePopState(e) {
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetScreen = e.state?.screen || urlParams.get('screen') || 'setup';
+  const currentActiveScreen = document.querySelector('.screen.active')?.id?.replace('screen-', '');
+
+  if (currentActiveScreen === 'interview' && targetScreen === 'setup') {
+    const confirmExit = confirm('Are you sure you want to leave the interview? Progress will be lost.');
+    if (!confirmExit) {
+      pushHistoryState('interview');
+      return;
+    }
+  }
+
+  showScreen(targetScreen, false);
+}
+
+function showScreen(name, updateHistory = true) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const targetEl = document.getElementById('screen-' + name);
+  if (targetEl) {
+    targetEl.classList.add('active');
+    window.scrollTo(0, 0);
+  }
+  if (updateHistory) {
+    pushHistoryState(name);
+  }
+}
+
+// ── INITIALIZATION ──
 function init() {
   renderTopics();
   setupOptionBtns();
   setupSearch();
   updateApiStatus();
   checkServerHealth();
-  
-  // Pre-select first 2 topics
+
   TOPICS.slice(0, 2).forEach(t => {
     document.getElementById('topic-' + t.id)?.click();
   });
-  
-  window.addEventListener('popstate', handlePopState);
-  replaceHistoryState('setup');
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialScreen = urlParams.get('screen') || 'setup';
+  replaceHistoryState(initialScreen);
+  showScreen(initialScreen, false);
 }
 
-// ROUTING & HISTORY
-function pushHistoryState(screen, data = {}) {
-  history.pushState({ screen, ...data }, '', `?screen=${screen}`);
-}
-
-function replaceHistoryState(screen, data = {}) {
-  history.replaceState({ screen, ...data }, '', `?screen=${screen}`);
-}
-
-function handlePopState(e) {
-  if (e.state && e.state.screen) {
-    showScreen(e.state.screen);
-  } else {
-    showScreen('setup');
-  }
-}
-
-// TOPIC RENDER & INTERACTION
+// TOPICS & CONFIG RENDER
 function renderTopics(filter = '') {
   const grid = document.getElementById('topics-grid');
   const fl = filter.toLowerCase();
@@ -993,8 +1014,6 @@ async function startInterview() {
   document.getElementById('q-total').textContent = state.questionCount;
   initHistoryList();
   showScreen('interview');
-  pushHistoryState('interview');
-  updateStats();
 
   if (state.userId !== 'anonymous') loadPreviousSessions();
   await loadNextQuestion();
@@ -1148,7 +1167,6 @@ async function advanceOrFinish() {
 function quitSession() {
   if (confirm('End session? Progress will be lost.')) {
     showScreen('setup');
-    replaceHistoryState('setup');
   }
 }
 
@@ -1265,21 +1283,13 @@ async function showResults() {
   } catch (e) { /* silent fail if saving offline */ }
 
   showScreen('results');
-  pushHistoryState('results');
 }
 
 function restartSession() {
   showScreen('setup');
-  replaceHistoryState('setup');
 }
 
-// SCREEN CONTROL & TOAST
-function showScreen(name) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById('screen-' + name).classList.add('active');
-  window.scrollTo(0, 0);
-}
-
+// TOAST
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
