@@ -688,10 +688,15 @@ nav {
       </div>
     </div>
 
-    <div class="user-id-row">
-      <div class="user-id-group">
-        <span class="config-label">Your Email Address <span style="color:var(--red)">*</span> (Required to start & save progress)</span>
-        <input type="email" id="user-email-input" placeholder="e.g. user@example.com" autocomplete="email" style="width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;outline:none;transition:all 0.2s ease;"/>
+    <div class="user-id-row" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:32px;">
+      <div class="user-id-group" style="flex:1;min-width:200px;">
+        <span class="config-label">Full Name <span style="color:var(--red)">*</span></span>
+        <input type="text" id="user-name-input" placeholder="e.g. Alex Smith" autocomplete="name" style="width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;outline:none;transition:all 0.2s ease;"/>
+        <div id="name-error-msg" style="display:none;color:var(--red);font-size:12px;margin-top:6px;font-family:'DM Mono',monospace;"></div>
+      </div>
+      <div class="user-id-group" style="flex:1;min-width:200px;">
+        <span class="config-label">Email Address <span style="color:var(--red)">*</span></span>
+        <input type="email" id="user-email-input" placeholder="e.g. alex@example.com" autocomplete="email" style="width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;outline:none;transition:all 0.2s ease;"/>
         <div id="email-error-msg" style="display:none;color:var(--red);font-size:12px;margin-top:6px;font-family:'DM Mono',monospace;"></div>
       </div>
     </div>
@@ -828,6 +833,7 @@ let state = {
   selectedTopics: [],
   difficulty: 'mixed',
   questionCount: 10,
+  userName: '',
   userId: '',
   sessionId: '',
   sessionStart: null,
@@ -1041,26 +1047,46 @@ async function startInterview() {
     return;
   }
 
+  const nameInput = document.getElementById('user-name-input');
+  const nameErrorEl = document.getElementById('name-error-msg');
+  const userName = nameInput ? nameInput.value.trim() : '';
+
   const emailInput = document.getElementById('user-email-input');
-  const errorMsgEl = document.getElementById('email-error-msg');
+  const emailErrorEl = document.getElementById('email-error-msg');
   const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
 
-  if (!email || !isValidEmail(email)) {
-    if (emailInput) {
-      emailInput.style.borderColor = 'var(--red)';
-      emailInput.focus();
+  let valid = true;
+
+  if (!userName) {
+    if (nameInput) nameInput.style.borderColor = 'var(--red)';
+    if (nameErrorEl) {
+      nameErrorEl.textContent = '⚠ Full Name is required.';
+      nameErrorEl.style.display = 'block';
     }
-    if (errorMsgEl) {
-      errorMsgEl.textContent = '⚠ Please enter a valid email address to start.';
-      errorMsgEl.style.display = 'block';
-    }
-    showToast('⚠ Email address is required to start the mock test.');
-    return;
+    valid = false;
   } else {
-    if (emailInput) emailInput.style.borderColor = 'var(--border)';
-    if (errorMsgEl) errorMsgEl.style.display = 'none';
+    if (nameInput) nameInput.style.borderColor = 'var(--border)';
+    if (nameErrorEl) nameErrorEl.style.display = 'none';
   }
 
+  if (!email || !isValidEmail(email)) {
+    if (emailInput) emailInput.style.borderColor = 'var(--red)';
+    if (emailErrorEl) {
+      emailErrorEl.textContent = '⚠ Valid email address is required.';
+      emailErrorEl.style.display = 'block';
+    }
+    valid = false;
+  } else {
+    if (emailInput) emailInput.style.borderColor = 'var(--border)';
+    if (emailErrorEl) emailErrorEl.style.display = 'none';
+  }
+
+  if (!valid) {
+    showToast('⚠ Please fill in both your Name and Email.');
+    return;
+  }
+
+  state.userName = userName;
   state.userId = email;
   state.sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   state.sessionStart = Date.now();
@@ -1395,6 +1421,7 @@ async function showResults() {
     const saveRes = await apiPost('/api/session/save', {
       session_id: state.sessionId,
       user_id: state.userId,
+      user_name: state.userName,
       topics: state.selectedTopics.map(id => TOPICS.find(t => t.id === id)?.name).filter(Boolean),
       difficulty: state.difficulty,
       total_questions: state.questionCount,
