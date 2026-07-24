@@ -1046,12 +1046,19 @@ function isValidEmail(email) {
   if (!re.test(lowerEmail)) return false;
   
   const domain = lowerEmail.split('@')[1];
+  const localPart = lowerEmail.split('@')[0];
+  
   const blockedDomains = [
     'test.com', 'example.com', 'dummy.com', 'fake.com', 
     'mailinator.com', 'yopmail.com', '10minutemail.com', 
     'tempmail.com', 'guerrillamail.com', 'hello.com'
   ];
   if (blockedDomains.includes(domain)) return false;
+
+  const blockedLocalParts = [
+    'test', 'hello', 'dummy', 'fake', 'admin', 'user', '123', 'abc'
+  ];
+  if (blockedLocalParts.includes(localPart)) return false;
   
   return true;
 }
