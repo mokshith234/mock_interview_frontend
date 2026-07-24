@@ -1243,6 +1243,9 @@ async function startInterview() {
 
     // ── RETURNING USER: skip verification, go straight to interview ──
     if (sendResp && sendResp.status === 'existing_user') {
+      startBtn.innerHTML = originalText;
+      startBtn.disabled = false;
+
       state.userName = sendResp.name;
       state.userId = sendResp.email;
       state.sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
