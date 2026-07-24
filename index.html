@@ -702,8 +702,17 @@ nav {
       </div>
     </div>
 
+    <div id="otp-section" style="display:none;flex-direction:column;gap:12px;margin-bottom:32px;align-items:center;">
+      <span class="config-label">Enter 6-digit verification code sent to your email</span>
+      <input type="text" id="otp-input" placeholder="123456" style="width:200px;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:18px;outline:none;text-align:center;letter-spacing:4px;font-family:'DM Mono',monospace;"/>
+      <div id="otp-error-msg" style="display:none;color:var(--red);font-size:12px;font-family:'DM Mono',monospace;"></div>
+      <button class="start-btn" id="verify-btn" onclick="verifyOTP()" style="width:200px;margin-top:8px;">
+        <span>Verify & Start</span><span>→</span>
+      </button>
+    </div>
+
     <button class="start-btn" id="start-btn" onclick="startInterview()">
-      <span>Start Interview</span><span>→</span>
+      <span>Send Code</span><span>→</span>
     </button>
   </div>
 
@@ -1109,44 +1118,109 @@ async function startInterview() {
     return;
   }
 
-  state.userName = userName;
-  state.userId = email;
-  state.sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  state.sessionStart = Date.now();
-  state.questions = [];
-  state.answers = [];
-  state.results = [];
-  state.currentQ = 0;
+  const startBtn = document.getElementById('start-btn');
+  const originalText = startBtn.innerHTML;
+  startBtn.innerHTML = '<span>Sending...</span>';
+  startBtn.disabled = true;
 
-  // Save user name & email immediately to Supabase
   try {
-    const saveResp = await apiPost('/api/user/save', { email: email, name: userName });
-    if (saveResp && saveResp.status === 'error') {
-      if (saveResp.code === 'NAME_EXISTS') {
-        if (nameInput) nameInput.style.borderColor = 'var(--red)';
-        if (nameErrorEl) {
-          nameErrorEl.textContent = '⚠ ' + saveResp.message;
-          nameErrorEl.style.display = 'block';
-        }
-      } else if (saveResp.code === 'INVALID_EMAIL') {
-        if (emailInput) emailInput.style.borderColor = 'var(--red)';
-        if (emailErrorEl) {
-          emailErrorEl.textContent = '⚠ ' + saveResp.message;
-          emailErrorEl.style.display = 'block';
-        }
+    const sendResp = await apiPost('/api/user/send-otp', { email: email });
+    if (sendResp && sendResp.status === 'error') {
+      if (sendResp.code === 'INVALID_EMAIL') {
+        emailInput.style.borderColor = 'var(--red)';
+        emailErrorEl.textContent = '⚠ ' + sendResp.message;
+        emailErrorEl.style.display = 'block';
+      } else {
+        showToast('⚠ ' + sendResp.message);
       }
-      return; // Stop the flow
+      startBtn.innerHTML = originalText;
+      startBtn.disabled = false;
+      return;
     }
+    
+    // Success: hide inputs and show OTP section
+    document.getElementById('user-name-input').disabled = true;
+    document.getElementById('user-email-input').disabled = true;
+    startBtn.style.display = 'none';
+    document.getElementById('otp-section').style.display = 'flex';
+    
+    state.userName = userName;
+    state.userId = email;
+    state.sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    state.sessionStart = Date.now();
+    state.questions = [];
+    state.answers = [];
+    state.results = [];
+    state.currentQ = 0;
+    
   } catch (e) {
-    console.error('Error saving user:', e);
+    console.error('Error sending OTP:', e);
+    showToast('Failed to send OTP. Ensure backend is configured.');
+    startBtn.innerHTML = originalText;
+    startBtn.disabled = false;
   }
+}
 
-  document.getElementById('q-total').textContent = state.questionCount;
-  initHistoryList();
-  showScreen('interview', true, { q: 0 });
+async function verifyOTP() {
+  const otpInput = document.getElementById('otp-input');
+  const otpError = document.getElementById('otp-error-msg');
+  const verifyBtn = document.getElementById('verify-btn');
+  const otp = otpInput.value.trim();
+  
+  if (otp.length < 6) {
+    otpError.textContent = '⚠ Enter the 6-digit code.';
+    otpError.style.display = 'block';
+    return;
+  }
+  otpError.style.display = 'none';
+  
+  const originalText = verifyBtn.innerHTML;
+  verifyBtn.innerHTML = '<span>Verifying...</span>';
+  verifyBtn.disabled = true;
+  
+  try {
+    const verifyResp = await apiPost('/api/user/verify-and-save', { 
+      email: state.userId, 
+      name: state.userName, 
+      otp: otp 
+    });
+    
+    if (verifyResp && verifyResp.status === 'error') {
+      if (verifyResp.code === 'NAME_EXISTS') {
+        document.getElementById('user-name-input').disabled = false;
+        document.getElementById('user-email-input').disabled = false;
+        document.getElementById('start-btn').style.display = 'flex';
+        document.getElementById('otp-section').style.display = 'none';
+        
+        const nameInput = document.getElementById('user-name-input');
+        const nameErrorEl = document.getElementById('name-error-msg');
+        nameInput.style.borderColor = 'var(--red)';
+        nameErrorEl.textContent = '⚠ ' + verifyResp.message;
+        nameErrorEl.style.display = 'block';
+      } else {
+        otpError.textContent = '⚠ ' + verifyResp.message;
+        otpError.style.display = 'block';
+      }
+      verifyBtn.innerHTML = originalText;
+      verifyBtn.disabled = false;
+      return;
+    }
+    
+    // Success, start interview
+    document.getElementById('q-total').textContent = state.questionCount;
+    initHistoryList();
+    showScreen('interview', true, { q: 0 });
 
-  loadPreviousSessions();
-  await loadNextQuestion();
+    loadPreviousSessions();
+    await loadNextQuestion();
+    
+  } catch (e) {
+    console.error('Error verifying OTP:', e);
+    otpError.textContent = '⚠ Failed to verify. Try again.';
+    otpError.style.display = 'block';
+    verifyBtn.innerHTML = originalText;
+    verifyBtn.disabled = false;
+  }
 }
 
 function initHistoryList() {
