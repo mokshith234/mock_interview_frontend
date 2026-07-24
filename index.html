@@ -1041,8 +1041,19 @@ async function apiGet(endpoint) {
 
 // HELPER FOR EMAIL VALIDATION
 function isValidEmail(email) {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(String(email).toLowerCase());
+  const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const lowerEmail = String(email).toLowerCase();
+  if (!re.test(lowerEmail)) return false;
+  
+  const domain = lowerEmail.split('@')[1];
+  const blockedDomains = [
+    'test.com', 'example.com', 'dummy.com', 'fake.com', 
+    'mailinator.com', 'yopmail.com', '10minutemail.com', 
+    'tempmail.com', 'guerrillamail.com', 'hello.com'
+  ];
+  if (blockedDomains.includes(domain)) return false;
+  
+  return true;
 }
 
 // INTERVIEW WORKFLOW
@@ -1102,8 +1113,26 @@ async function startInterview() {
 
   // Save user name & email immediately to Supabase
   try {
-    apiPost('/api/user/save', { email: email, name: userName }).catch(() => {});
-  } catch (e) { /* ignore silent */ }
+    const saveResp = await apiPost('/api/user/save', { email: email, name: userName });
+    if (saveResp && saveResp.status === 'error') {
+      if (saveResp.code === 'NAME_EXISTS') {
+        if (nameInput) nameInput.style.borderColor = 'var(--red)';
+        if (nameErrorEl) {
+          nameErrorEl.textContent = '⚠ ' + saveResp.message;
+          nameErrorEl.style.display = 'block';
+        }
+      } else if (saveResp.code === 'INVALID_EMAIL') {
+        if (emailInput) emailInput.style.borderColor = 'var(--red)';
+        if (emailErrorEl) {
+          emailErrorEl.textContent = '⚠ ' + saveResp.message;
+          emailErrorEl.style.display = 'block';
+        }
+      }
+      return; // Stop the flow
+    }
+  } catch (e) {
+    console.error('Error saving user:', e);
+  }
 
   document.getElementById('q-total').textContent = state.questionCount;
   initHistoryList();
