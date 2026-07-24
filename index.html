@@ -705,6 +705,41 @@ nav {
     <button class="start-btn" id="start-btn" onclick="startInterview()">
       <span>Start Interview</span><span>→</span>
     </button>
+
+    <!-- RETURNING USER PROGRESS DASHBOARD (hidden by default) -->
+    <div id="progress-dashboard" style="display:none;margin-top:40px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <span style="font-size:20px;">📊</span>
+        <h3 id="progress-greeting" style="font-size:20px;font-weight:400;color:var(--text);margin:0;">Your Progress</h3>
+      </div>
+
+      <!-- Stats Summary Row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center;">
+          <div id="prog-total-sessions" style="font-size:24px;font-weight:600;color:var(--accent2);font-family:'DM Mono',monospace;">0</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;font-family:'DM Mono',monospace;">Sessions</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center;">
+          <div id="prog-avg-score" style="font-size:24px;font-weight:600;color:var(--green);font-family:'DM Mono',monospace;">0%</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;font-family:'DM Mono',monospace;">Avg Score</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center;">
+          <div id="prog-best-score" style="font-size:24px;font-weight:600;color:var(--yellow);font-family:'DM Mono',monospace;">0%</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;font-family:'DM Mono',monospace;">Best Score</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center;">
+          <div id="prog-total-qs" style="font-size:24px;font-weight:600;color:var(--text);font-family:'DM Mono',monospace;">0</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;font-family:'DM Mono',monospace;">Questions</div>
+        </div>
+      </div>
+
+      <!-- Recent Sessions List -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px;">Recent Sessions</div>
+        <div id="prog-sessions-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- INTERVIEW SCREEN -->
@@ -974,6 +1009,23 @@ async function init() {
   renderTopics();
   setupOptionBtns();
   setupSearch();
+
+  // Auto-fetch progress when email is entered
+  const emailInput = document.getElementById('user-email-input');
+  if (emailInput) {
+    emailInput.addEventListener('blur', async (e) => {
+      const email = e.target.value.trim().toLowerCase();
+      if (email && isValidEmail(email)) {
+        // Use a generic greeting if name isn't entered yet
+        const nameInput = document.getElementById('user-name-input');
+        const userName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : 'there';
+        await showProgressDashboard(email, userName);
+      } else {
+        document.getElementById('progress-dashboard').style.display = 'none';
+      }
+    });
+  }
+
   updateApiStatus();
   checkServerHealth();
 
@@ -1277,6 +1329,57 @@ async function loadPreviousSessions() {
       });
     }
   } catch (e) { /* silent */ }
+}
+
+async function showProgressDashboard(email, userName) {
+  try {
+    const data = await apiGet(`/api/history/${email}?limit=10`);
+    if (!data.sessions || data.sessions.length === 0) return;
+
+    const sessions = data.sessions;
+    const totalSessions = sessions.length;
+    const avgScore = Math.round(sessions.reduce((sum, s) => sum + s.score_pct, 0) / totalSessions);
+    const bestScore = Math.max(...sessions.map(s => s.score_pct));
+    const totalQs = sessions.reduce((sum, s) => sum + s.total_questions, 0);
+
+    // Color the avg score appropriately
+    const avgEl = document.getElementById('prog-avg-score');
+    avgEl.textContent = avgScore + '%';
+    avgEl.style.color = avgScore >= 70 ? 'var(--green)' : avgScore >= 40 ? 'var(--yellow)' : 'var(--red)';
+
+    document.getElementById('prog-total-sessions').textContent = totalSessions;
+    document.getElementById('prog-best-score').textContent = bestScore + '%';
+    document.getElementById('prog-total-qs').textContent = totalQs;
+    document.getElementById('progress-greeting').textContent = `Welcome back, ${userName}! Here's your progress`;
+
+    // Populate recent sessions list
+    const list = document.getElementById('prog-sessions-list');
+    list.innerHTML = '';
+    sessions.forEach((s, i) => {
+      const date = new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const topics = (s.topics || []).slice(0, 3).join(', ');
+      const scoreColor = s.score_pct >= 70 ? 'var(--green)' : s.score_pct >= 40 ? 'var(--yellow)' : 'var(--red)';
+      const trend = i < sessions.length - 1 ? (s.score_pct > sessions[i + 1].score_pct ? '📈' : s.score_pct < sessions[i + 1].score_pct ? '📉' : '➡️') : '🆕';
+      
+      const el = document.createElement('div');
+      el.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);';
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:16px;">${trend}</span>
+          <div>
+            <div style="font-size:13px;color:var(--text);">${topics || 'Mixed'}</div>
+            <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;">${date} · ${s.total_questions} Qs · ${s.correct || 0}✓ ${s.partial || 0}◐ ${s.wrong || 0}✗</div>
+          </div>
+        </div>
+        <div style="font-size:18px;font-weight:600;font-family:'DM Mono',monospace;color:${scoreColor};">${s.score_pct}%</div>
+      `;
+      list.appendChild(el);
+    });
+
+    document.getElementById('progress-dashboard').style.display = 'block';
+  } catch (e) {
+    console.error('Failed to load progress dashboard:', e);
+  }
 }
 
 async function loadNextQuestion() {
