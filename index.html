@@ -960,6 +960,9 @@ async function init() {
       loadPreviousSessions();
       await loadNextQuestion();
       
+      // Warm greeting for first-time users
+      showToast('🎉 Welcome to PrepAI, ' + state.userName + '! Let\u0027s ace this interview.');
+
       updateApiStatus();
       return; // Skip normal init
     } catch (e) {
@@ -1185,7 +1188,31 @@ async function startInterview() {
       startBtn.disabled = false;
       return;
     }
+
+    // ── RETURNING USER: skip verification, go straight to interview ──
+    if (sendResp && sendResp.status === 'existing_user') {
+      state.userName = sendResp.name;
+      state.userId = sendResp.email;
+      state.sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      state.sessionStart = Date.now();
+      state.questions = [];
+      state.answers = [];
+      state.results = [];
+      state.currentQ = 0;
+
+      document.getElementById('q-total').textContent = state.questionCount;
+      initHistoryList();
+      showScreen('interview', true, { q: 0 });
+
+      // Beautiful welcome back toast
+      showToast('👋 Welcome back, ' + sendResp.name + '! Good to see you again.');
+
+      loadPreviousSessions();
+      await loadNextQuestion();
+      return;
+    }
     
+    // ── NEW USER: send verification email and show blocking screen ──
     // Save state to localStorage for the new tab to pick up
     localStorage.setItem('interview_state', JSON.stringify({
       userName: userName,
